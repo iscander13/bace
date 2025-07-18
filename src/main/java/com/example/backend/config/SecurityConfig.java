@@ -60,8 +60,8 @@ public class SecurityConfig {
                 // Например:
                 // .requestMatchers("/api/v1/analytics/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
 
-
-                // Только пользователи с ролью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
+                .requestMatchers("/api/chat/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
+                // Только пользователи с р  олью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
                 .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 
                 // Все остальные API-эндпоинты, начинающиеся с /api/, требуют аутентификации
