@@ -2,7 +2,7 @@ package com.example.backend.AI;
 
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
+import java.net.http.HttpRequest; // Исправлено на slf4j
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Slf4j
-public class OpenAIService { // Переименован в OpenAIService, но может работать с Gemini
+public class OpenAIService {
 
     @Value("${openai.api.key:}") // Ключ API OpenAI
     private String openaiApiKey;
@@ -41,40 +41,43 @@ public class OpenAIService { // Переименован в OpenAIService, но 
         log.debug("OpenAIService: История чата: {}", history);
         log.debug("OpenAIService: Контекст полигона: {}", polygonContext);
 
-        List<Object> contents = new ArrayList<>();
+        List<Object> messagesForOpenAI = new ArrayList<>();
 
         // Добавляем системное сообщение с контекстом полигона, если оно есть
         if (polygonContext != null && !polygonContext.trim().isEmpty()) {
-            contents.add(new Message("user", polygonContext)); // OpenAI API ожидает "user" для системного контекста
-            // contents.add(new Message("model", "OK. Я понял контекст.")); // Эта строка специфична для Gemini, удаляем для OpenAI
+            messagesForOpenAI.add(new Message("system", polygonContext)); // OpenAI API ожидает "system" для контекста
         }
 
         // Добавляем предыдущие сообщения из истории
         for (Message msg : history) {
             // Роли для OpenAI API: "user", "assistant", "system"
             String role = msg.getSender().equalsIgnoreCase("model") ? "assistant" : msg.getSender(); // Преобразуем "model" в "assistant"
-            contents.add(new Message(role, msg.getText()));
+            messagesForOpenAI.add(new Message(role, msg.getText()));
         }
 
         // Добавляем текущее сообщение пользователя
-        contents.add(new Message("user", userMessage));
+        messagesForOpenAI.add(new Message("user", userMessage));
 
         try {
             // Формируем тело запроса для OpenAI API
             // Используем "messages" вместо "contents" и добавляем "model"
-            String requestBody = objectMapper.writeValueAsString(new OpenAIRequest("gpt-3.5-turbo", contents)); // Используем gpt-3.5-turbo или другую модель
+            String requestBody = objectMapper.writeValueAsString(new OpenAIRequest("gpt-3.5-turbo", messagesForOpenAI)); // Используем gpt-3.5-turbo или другую модель
+            
+            log.info("OpenAIService: Отправка запроса в OpenAI API. URL: {}", openaiApiUrl);
+            log.debug("OpenAIService: Тело запроса: {}", requestBody); // Логируем тело запроса
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(openaiApiUrl)) // Используем openaiApiUrl
+                    .uri(URI.create(openaiApiUrl))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + openaiApiKey) // Используем openaiApiKey
+                    .header("Authorization", "Bearer " + openaiApiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             String responseBody = response.body();
 
-            log.debug("OpenAIService: Ответ от AI: {}", responseBody);
+            log.info("OpenAIService: Получен ответ от OpenAI API. Статус: {}", response.statusCode());
+            log.debug("OpenAIService: Полное тело ответа от AI: {}", responseBody); // Логируем полное тело ответа
 
             if (response.statusCode() == 200) {
                 JsonNode rootNode = objectMapper.readTree(responseBody);
@@ -86,10 +89,19 @@ public class OpenAIService { // Переименован в OpenAIService, но 
                         return contentNode.asText();
                     }
                 }
-                log.warn("OpenAIService: Не удалось извлечь текст из ответа AI: {}", responseBody);
+                log.warn("OpenAIService: Не удалось извлечь текст из ответа AI. Ответ: {}", responseBody);
                 return "Извините, не удалось получить ответ от AI. (Неверный формат ответа)";
             } else {
                 log.error("OpenAIService: Ошибка при запросе к AI. Статус: {}, Тело: {}", response.statusCode(), responseBody);
+                // Попытка извлечь сообщение об ошибке из ответа OpenAI
+                try {
+                    JsonNode errorNode = objectMapper.readTree(responseBody).path("error");
+                    if (errorNode.isObject() && errorNode.has("message")) {
+                        return "Извините, произошла ошибка при общении с AI: " + errorNode.path("message").asText();
+                    }
+                } catch (Exception parseError) {
+                    log.error("OpenAIService: Ошибка при парсинге тела ошибки AI: {}", parseError.getMessage());
+                }
                 return "Извините, произошла ошибка при общении с AI: " + response.statusCode() + " - " + responseBody;
             }
 
