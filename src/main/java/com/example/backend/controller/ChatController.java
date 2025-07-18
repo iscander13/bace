@@ -32,7 +32,7 @@ import com.example.backend.repository.ChatMessageRepository;
 import com.example.backend.repository.PolygonAreaRepository;
 import com.example.backend.repository.UserRepository;
 import com.example.backend.service.PolygonService;
-import com.google.gson.Gson; // Добавлен импорт UserRepository
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 
