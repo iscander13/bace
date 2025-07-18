@@ -3,7 +3,6 @@ package com.example.backend.JWT;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -15,12 +14,14 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.example.backend.entiity.User;
+
 import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException; // Добавлен импорт
-import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest; // Добавлен импорт
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor; // Добавлен импорт ArrayList
-import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j; // Добавлен импорт ArrayList
 
 @Component
 @RequiredArgsConstructor
@@ -40,7 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String authHeader = request.getHeader("Authorization");
         final String jwtToken; // Переименовано для ясности
-        final String userEmail;
+        String userEmail = null; // Инициализируем null
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.warn("JWT Filter: No Bearer token found or Authorization header missing. Proceeding without authentication.");
@@ -53,68 +54,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             userEmail = jwtService.extractUsername(jwtToken);
-            List<String> roles = new ArrayList<>();
-
-            Object rolesObject = jwtService.extractClaim(jwtToken, claims -> claims.get("roles"));
-            if (rolesObject instanceof List) {
-                ((List<?>) rolesObject).forEach(item -> {
-                    if (item instanceof String) {
-                        roles.add((String) item);
-                    }
-                });
-            }
             
-            log.info("JWT Filter: Extracted email: {} and roles: {} from token.", userEmail, roles);
-
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // --- НОВАЯ ЛОГИКА: Обработка DEMO-пользователя ---
-                if (roles.contains("ROLE_DEMO")) {
-                    log.info("JWT Filter: Detected DEMO user: {}", userEmail);
-                    // Создаем UserDetails для демо-пользователя без обращения к БД
-                    List<SimpleGrantedAuthority> authorities = roles.stream()
-                            .map(SimpleGrantedAuthority::new)
-                            .collect(Collectors.toList());
+                // ✨ НОВОЕ: Проверка на демо-токен
+                if (jwtService.isDemoToken(jwtToken)) {
+                    log.info("JWT Filter: Authenticating DEMO user: {}", userEmail);
+                    // Для демо-пользователя создаем SimpleGrantedAuthority напрямую
+                    // Используем "ROLE_DEMO" как авторитет
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                    authorities.add(new SimpleGrantedAuthority("ROLE_DEMO"));
 
-                    UserDetails demoUserDetails = new org.springframework.security.core.userdetails.User(
-                            userEmail, // "TEST"
-                            "",        // Пароль не нужен для UserDetails демо-пользователя
-                            authorities
+                    // Создаем фиктивный UserDetails для демо-пользователя
+                    // Это важно, чтобы Spring Security мог работать с ним
+                    // Используем ваш класс User для создания UserDetails, так как он его реализует
+                    User demoUserDetails = new User(
+                        0L, // Фиктивный ID для демо
+                        userEmail, 
+                        "", // Пароль не нужен для аутентификации по токену
+                        "DEMO", // Роль
+                        null, null // Для сброса пароля
                     );
 
-                    if (jwtService.isTokenValid(jwtToken, demoUserDetails)) {
-                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                demoUserDetails,
-                                null, // У демо-пользователя нет учетных данных (credentials)
-                                demoUserDetails.getAuthorities()
-                        );
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-                        log.info("JWT Filter: Authenticated DEMO user: {} with roles: {}", userEmail, roles);
-                    } else {
-                        log.warn("JWT Filter: DEMO token is invalid or expired for user: {}", userEmail);
-                    }
-                } 
-                // --- СУЩЕСТВУЮЩАЯ ЛОГИКА: Обработка ADMIN и обычных пользователей ---
-                else if (roles.contains("ROLE_ADMIN") || roles.contains("ROLE_SUPER_ADMIN")) { // Учитываем SUPER_ADMIN
-                    // Если токен содержит роль ADMIN или SUPER_ADMIN, создаем временного пользователя
-                    // (или загружаем из БД, если админы хранятся в БД)
-                    // Для простоты, пока создаем временного пользователя, как вы делали для ADMIN
-                    com.example.backend.entiity.User adminOrSuperAdminUser = com.example.backend.entiity.User.builder()
-                                        .id(null) 
-                                        .email(userEmail) 
-                                        .passwordHash("") 
-                                        .role(roles.contains("ROLE_SUPER_ADMIN") ? "SUPER_ADMIN" : "ADMIN") // Устанавливаем правильную роль
-                                        .resetCode(null)
-                                        .resetCodeExpiry(null)
-                                        .build();
-
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            adminOrSuperAdminUser, null, adminOrSuperAdminUser.getAuthorities());
+                        demoUserDetails, // Используем фиктивный UserDetails
+                        null,
+                        authorities // Используем явно созданные авторитеты
+                    );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    log.info("JWT Filter: Authenticated {} user: {}", adminOrSuperAdminUser.getRole(), userEmail);
+                    log.info("JWT Filter: DEMO user authenticated: {}", userEmail);
+
                 } else {
-                    // Обычная логика для USER-токенов: ищем пользователя в БД
+                    // Существующая логика для обычных пользователей
                     // Используем userDetailsService для загрузки UserDetails
                     UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
                     
@@ -133,7 +104,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
 
         } catch (io.jsonwebtoken.ExpiredJwtException e) {
-            log.warn("JWT Filter: Token expired.");
+            log.warn("JWT Filter: Token expired for user {}", userEmail != null ? userEmail : "unknown");
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Token expired\"}");
@@ -148,23 +119,4 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     
         filterChain.doFilter(request, response);
     }
-
-    // Метод loadRegularUser больше не нужен, его логика интегрирована выше
-    // private void loadRegularUser(String userEmail, String jwt, HttpServletRequest request) {
-    //    UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-    //    log.info("JWT Filter: Extracted email: {} and roles: {} from token.", userEmail, userDetails.getAuthorities());
-    //
-    //    if (jwtService.isTokenValid(jwt, userDetails)) {
-    //        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-    //                userDetails,
-    //                null,
-    //                userDetails.getAuthorities()
-    //        );
-    //        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-    //        SecurityContextHolder.getContext().setAuthentication(authToken);
-    //        log.info("JWT Filter: Authenticated regular user: {} with roles: {}", userEmail, userDetails.getAuthorities());
-    //    } else {
-    //        log.warn("JWT Filter: Token is invalid or expired for user: {}", userEmail);
-    //    }
-    // }
 }

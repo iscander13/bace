@@ -68,6 +68,10 @@ public class JwtService {
         claims.put("roles", userDetails.getAuthorities().stream()
                                     .map(GrantedAuthority::getAuthority)
                                     .collect(Collectors.toList()));
+        // Если UserDetails является вашим кастомным User и имеет ID, добавьте его
+        if (userDetails instanceof User) {
+            claims.put("id", ((User) userDetails).getId());
+        }
         return generateToken(claims, userDetails);
     }
 
@@ -94,8 +98,9 @@ public class JwtService {
     public String generateDemoToken(String username, List<String> roles) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles); // Добавляем роли (например, "ROLE_DEMO")
-        // Можно добавить другие клеймы, если необходимо, например, флаг is_demo:
-        // claims.put("is_demo", true); 
+        claims.put("is_demo", true); // ✨ НОВЫЙ КЛЕЙМ: Помечаем токен как демо
+        // Для демо-пользователя можно задать фиктивный ID, если он нужен на фронте
+        claims.put("id", 0L); // Фиктивный ID 0 для демо-пользователя
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username) // "TEST"
@@ -132,6 +137,16 @@ public class JwtService {
             }
         }
         return Optional.empty();
+    }
+
+    // ✨ НОВЫЙ МЕТОД: Проверяем, является ли токен демо-токеном
+    public boolean isDemoToken(String token) {
+        try {
+            Boolean isDemo = extractClaim(token, claims -> claims.get("is_demo", Boolean.class));
+            return Boolean.TRUE.equals(isDemo);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
