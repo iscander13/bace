@@ -29,12 +29,14 @@ public class CropService {
     }
 
     public List<String> getAllChapters() {
+        // Больше нет проверки на демо-пользователя, всегда возвращаем реальные данные
         return cropTree.stream()
                 .map(ChapterDto::getTitle)
                 .toList();
     }
 
     public List<CropDto> getCropsByChapter(String chapter) {
+        // Больше нет проверки на демо-пользователя, всегда возвращаем реальные данные
         return cropTree.stream()
                 .filter(ch -> ch.getTitle().equalsIgnoreCase(chapter))
                 .findFirst()
@@ -43,6 +45,7 @@ public class CropService {
     }
 
     public List<VarietyDto> getVarietiesByCrop(String cropName) {
+        // Больше нет проверки на демо-пользователя, всегда возвращаем реальные данные
         return cropTree.stream()
                 .flatMap(ch -> ch.getCrops().stream())
                 .filter(c -> c.getName().equalsIgnoreCase(cropName))
@@ -50,4 +53,5 @@ public class CropService {
                 .map(CropDto::getVarieties)
                 .orElse(List.of());
     }
+    // Удалены методы createMockChapters(), так как они больше не используются
 }

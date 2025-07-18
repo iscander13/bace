@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam; // ИМПОРТИРУЕМ RequestParam
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.backend.dto.PolygonAreaResponseDto;
@@ -40,7 +40,8 @@ public class PolygonAreaController {
 
     // Создание нового полигона
     @PostMapping("/create")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    // Разрешаем DEMO создавать полигоны (они будут имитироваться в сервисе)
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'SUPER_ADMIN', 'DEMO')")
     public ResponseEntity<PolygonAreaResponseDto> createPolygon(@RequestBody PolygonRequestDto polygonRequestDto,
                                                                 @RequestParam(required = false) Long targetUserId) {
         log.info("PolygonAreaController: Received request to create polygon for targetUserId: {}", targetUserId);
@@ -61,7 +62,8 @@ public class PolygonAreaController {
 
     // Получение всех полигонов текущего пользователя
     @GetMapping("/user")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    // Разрешаем DEMO просматривать полигоны
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'SUPER_ADMIN', 'DEMO')")
     public ResponseEntity<?> getPolygonsForCurrentUser() {
         log.info("PolygonAreaController: Received request to get polygons for current user.");
         try {
@@ -78,9 +80,9 @@ public class PolygonAreaController {
         }
     }
 
-    // Получение полигонов для конкретного пользователя (только для ADMIN/SUPER_ADMIN)
+    // Получение полигонов для конкретного пользователя (только для ADMIN/SUPER_ADMIN, DEMO не может просматривать чужие)
     @GetMapping("/user/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')") // DEMO не добавляем, так как он не должен видеть чужие полигоны
     public ResponseEntity<?> getPolygonsByUserId(@PathVariable Long userId) {
         log.info("PolygonAreaController: Received request to get polygons for user ID: {}", userId);
         try {
@@ -102,7 +104,8 @@ public class PolygonAreaController {
 
     // Обновление полигона
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    // Разрешаем DEMO обновлять полигоны (они будут имитироваться в сервисе)
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'SUPER_ADMIN', 'DEMO')")
     public ResponseEntity<PolygonAreaResponseDto> updatePolygon(@PathVariable UUID id, @RequestBody PolygonRequestDto polygonRequestDto) {
         log.info("PolygonAreaController: Received request to update polygon with ID: {}", id);
         try {
@@ -122,7 +125,8 @@ public class PolygonAreaController {
 
     // Удаление полигона
     @DeleteMapping("/delete/{id}")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    // Разрешаем DEMO удалять полигоны (они будут имитироваться в сервисе)
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'SUPER_ADMIN', 'DEMO')")
     public ResponseEntity<?> deletePolygon(@PathVariable UUID id) {
         log.info("PolygonAreaController: Received request to delete polygon with ID: {}", id);
         try {
@@ -143,13 +147,14 @@ public class PolygonAreaController {
     // Очистка всех полигонов текущего пользователя
     @DeleteMapping("/clear-all")
     @Transactional
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    // Разрешаем DEMO очищать полигоны (они будут имитироваться в сервисе)
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN', 'SUPER_ADMIN', 'DEMO')")
     public ResponseEntity<?> deleteAllPolygonsForUser(@AuthenticationPrincipal User principalUser) {
         log.info("PolygonAreaController: Received request to clear all polygons for user.");
 
         try {
-            polygonService.clearAllPolygonsForCurrentUser();
-            return ResponseEntity.noContent().build();
+            polygonService.deleteAllPolygonsForUser(principalUser); // Вызываем сервисный метод
+            return ResponseEntity.noContent().build(); // Формируем ResponseEntity здесь
         } catch (SecurityException e) {
             log.warn("Security exception during clear-all operation: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());

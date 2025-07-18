@@ -3,22 +3,23 @@ package com.example.backend.JWT;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.example.backend.entiity.User;
-import com.example.backend.repository.UserRepository;
-
 import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest; // Ваш кастомный User entity
+import jakarta.servlet.ServletException; // Добавлен импорт
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import lombok.RequiredArgsConstructor; // Добавлен импорт ArrayList
 import lombok.extern.slf4j.Slf4j;
 
 @Component
@@ -27,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
+    private final UserDetailsService userDetailsService; // Используем UserDetailsService для обычных пользователей
 
     @Override
     protected void doFilterInternal(
@@ -35,22 +36,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-                                        
-        final String authHeader = request.getHeader("Authorization");
         log.info("JWT Filter: Request URL: {}", request.getRequestURI());
-                                        
+
+        final String authHeader = request.getHeader("Authorization");
+        final String jwtToken; // Переименовано для ясности
+        final String userEmail;
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.warn("JWT Filter: No Bearer token found or Authorization header missing. Proceeding without authentication.");
             filterChain.doFilter(request, response);
             return;
         }
-    
-        final String jwtToken = authHeader.substring(7);
+
+        jwtToken = authHeader.substring(7);
         log.info("JWT Filter: Extracted token: {}", jwtToken);
-        
+
         try {
-            final String userEmail = jwtService.extractUsername(jwtToken); // <--- ИЗМЕНЕНО: Объявлено final здесь
-            final List<String> roles = new ArrayList<>(); // <--- ИЗМЕНЕНО: Объявлено final здесь
+            userEmail = jwtService.extractUsername(jwtToken);
+            List<String> roles = new ArrayList<>();
 
             Object rolesObject = jwtService.extractClaim(jwtToken, claims -> claims.get("roles"));
             if (rolesObject instanceof List) {
@@ -62,39 +65,68 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             
             log.info("JWT Filter: Extracted email: {} and roles: {} from token.", userEmail, roles);
-        
-            if (SecurityContextHolder.getContext().getAuthentication() == null) {
-                if (roles.contains("ROLE_ADMIN")) { // Проверяем, содержит ли токен роль ADMIN
-                    // Если токен содержит роль ADMIN, создаем временного пользователя ADMIN
-                    User adminUser = User.builder()
-                                        .id(null) // Используем null для автоинкрементного ID
-                                        .email(userEmail) // userEmail теперь final
-                                        .passwordHash("") // Пароль не нужен для временного объекта
-                                        .role("ADMIN")
+
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                // --- НОВАЯ ЛОГИКА: Обработка DEMO-пользователя ---
+                if (roles.contains("ROLE_DEMO")) {
+                    log.info("JWT Filter: Detected DEMO user: {}", userEmail);
+                    // Создаем UserDetails для демо-пользователя без обращения к БД
+                    List<SimpleGrantedAuthority> authorities = roles.stream()
+                            .map(SimpleGrantedAuthority::new)
+                            .collect(Collectors.toList());
+
+                    UserDetails demoUserDetails = new org.springframework.security.core.userdetails.User(
+                            userEmail, // "TEST"
+                            "",        // Пароль не нужен для UserDetails демо-пользователя
+                            authorities
+                    );
+
+                    if (jwtService.isTokenValid(jwtToken, demoUserDetails)) {
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                demoUserDetails,
+                                null, // У демо-пользователя нет учетных данных (credentials)
+                                demoUserDetails.getAuthorities()
+                        );
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                        log.info("JWT Filter: Authenticated DEMO user: {} with roles: {}", userEmail, roles);
+                    } else {
+                        log.warn("JWT Filter: DEMO token is invalid or expired for user: {}", userEmail);
+                    }
+                } 
+                // --- СУЩЕСТВУЮЩАЯ ЛОГИКА: Обработка ADMIN и обычных пользователей ---
+                else if (roles.contains("ROLE_ADMIN") || roles.contains("ROLE_SUPER_ADMIN")) { // Учитываем SUPER_ADMIN
+                    // Если токен содержит роль ADMIN или SUPER_ADMIN, создаем временного пользователя
+                    // (или загружаем из БД, если админы хранятся в БД)
+                    // Для простоты, пока создаем временного пользователя, как вы делали для ADMIN
+                    com.example.backend.entiity.User adminOrSuperAdminUser = com.example.backend.entiity.User.builder()
+                                        .id(null) 
+                                        .email(userEmail) 
+                                        .passwordHash("") 
+                                        .role(roles.contains("ROLE_SUPER_ADMIN") ? "SUPER_ADMIN" : "ADMIN") // Устанавливаем правильную роль
                                         .resetCode(null)
                                         .resetCodeExpiry(null)
                                         .build();
 
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            adminUser, null, adminUser.getAuthorities());
+                            adminOrSuperAdminUser, null, adminOrSuperAdminUser.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    log.info("JWT Filter: Authenticated ADMIN user: {}", userEmail);
+                    log.info("JWT Filter: Authenticated {} user: {}", adminOrSuperAdminUser.getRole(), userEmail);
                 } else {
                     // Обычная логика для USER-токенов: ищем пользователя в БД
-                    userRepository.findByEmail(userEmail).ifPresentOrElse(user -> { // userEmail теперь final
-                        if (jwtService.isTokenValid(jwtToken, user)) { 
-                            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                    user, null, user.getAuthorities());
-                            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                            SecurityContextHolder.getContext().setAuthentication(authToken);
-                            log.info("JWT Filter: Authenticated user: {}", user.getEmail());
-                        } else {
-                            log.warn("JWT Filter: Token is not valid for user: {}", user.getEmail());
-                        }
-                    }, () -> {
-                        log.warn("JWT Filter: No user found with email: {}", userEmail); // userEmail теперь final
-                    });
+                    // Используем userDetailsService для загрузки UserDetails
+                    UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+                    
+                    if (jwtService.isTokenValid(jwtToken, userDetails)) { 
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                userDetails, null, userDetails.getAuthorities());
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                        log.info("JWT Filter: Authenticated regular user: {}", userDetails.getUsername());
+                    } else {
+                        log.warn("JWT Filter: Token is not valid for user: {}", userEmail);
+                    }
                 }
             } else {
                 log.info("JWT Filter: User already authenticated (from previous filter or context).");
@@ -107,7 +139,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.getWriter().write("{\"error\": \"Token expired\"}");
             return;
         } catch (Exception e) {
-            log.error("JWT Filter: Error extracting claims from token", e);
+            log.error("JWT Filter: Error processing token", e); // Более общее сообщение
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Invalid token\"}");
@@ -116,4 +148,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     
         filterChain.doFilter(request, response);
     }
+
+    // Метод loadRegularUser больше не нужен, его логика интегрирована выше
+    // private void loadRegularUser(String userEmail, String jwt, HttpServletRequest request) {
+    //    UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+    //    log.info("JWT Filter: Extracted email: {} and roles: {} from token.", userEmail, userDetails.getAuthorities());
+    //
+    //    if (jwtService.isTokenValid(jwt, userDetails)) {
+    //        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+    //                userDetails,
+    //                null,
+    //                userDetails.getAuthorities()
+    //        );
+    //        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+    //        SecurityContextHolder.getContext().setAuthentication(authToken);
+    //        log.info("JWT Filter: Authenticated regular user: {} with roles: {}", userEmail, userDetails.getAuthorities());
+    //    } else {
+    //        log.warn("JWT Filter: Token is invalid or expired for user: {}", userEmail);
+    //    }
+    // }
 }

@@ -21,7 +21,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users") // Важно: Если у вас есть таблица с именем "users", это нормально.
+                        // В некоторых БД "user" является зарезервированным словом.
 @Getter
 @Setter
 @NoArgsConstructor

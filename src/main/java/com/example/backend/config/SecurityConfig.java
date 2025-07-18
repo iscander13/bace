@@ -8,7 +8,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity; // Убедитесь, что это импортировано
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -50,11 +50,23 @@ public class SecurityConfig {
                     "/error"
                 ).permitAll() // Эти пути доступны всем
                 
+                // --- НОВЫЕ ПРАВИЛА: Разрешаем DEMO, USER, ADMIN, SUPER_ADMIN доступ к эндпоинтам данных ---
+                // Это позволит демо-пользователю видеть данные
+                // Замените "USER" на "ROLE_USER", "ADMIN" на "ROLE_ADMIN" и т.д., если используете префикс "ROLE_"
+                // в вашем UserDetails.getAuthorities()
+                .requestMatchers("/api/v1/crops/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
+                .requestMatchers("/api/polygons/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
+                // Добавьте сюда другие эндпоинты, к которым демо-пользователь должен иметь доступ для просмотра
+                // Например:
+                // .requestMatchers("/api/v1/analytics/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
+
+
                 // Только пользователи с ролью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
                 .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 
                 // Все остальные API-эндпоинты, начинающиеся с /api/, требуют аутентификации
-                // (но не требуют конкретной роли, если только это не /api/v1/admin/**)
+                // (но не требуют конкретной роли, если только это не /api/v1/admin/** или выше)
+                // Это правило должно быть после более специфичных правил
                 .requestMatchers("/api/**").authenticated()
                 
                 // Все остальные запросы (не /api) также требуют аутентификации
