@@ -93,7 +93,8 @@ public class SecurityConfig {
                 "https://agrofarm.kz",
                 "https://user.agrofarm.kz",
                 "https://www.user.agrofarm.kz",
-                "https://www.agrofarm.kz"
+                "https://www.agrofarm.kz",
+                "http://localhost:5174" // <-- ДОБАВЛЕНО: Разрешаем ваш локальный фронтенд
         ));
         
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
