@@ -47,7 +47,8 @@ public class SecurityConfig {
                     "/api/v1/recovery/**",
                     // Базовые пути, которые могут быть доступны без аутентификации (например, корневой URL)
                     "/",
-                    "/error"
+                    "/error",
+                    "/api/contact/send" // <-- ДОБАВЛЕНО: Разрешаем доступ к эндпоинту отправки контактов
                 ).permitAll() // Эти пути доступны всем
                 
                 // --- НОВЫЕ ПРАВИЛА: Разрешаем DEMO, USER, ADMIN, SUPER_ADMIN доступ к эндпоинтам данных ---
@@ -61,7 +62,7 @@ public class SecurityConfig {
                 // .requestMatchers("/api/v1/analytics/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
 
                 .requestMatchers("/api/chat/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
-                // Только пользователи с р  олью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
+                // Только пользователи с ролью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
                 .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 
                 // Все остальные API-эндпоинты, начинающиеся с /api/, требуют аутентификации
