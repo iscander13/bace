@@ -11,7 +11,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.backend.AI.OpenAIService;
+import com.example.backend.AI.OpenAIService; // Этот импорт может быть удален, если OpenAIService не используется напрямую здесь
 import com.example.backend.entiity.ChatMessage;
 import com.example.backend.entiity.PolygonArea;
 import com.example.backend.entiity.User;
@@ -30,9 +30,10 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final PolygonAreaRepository polygonAreaRepository;
     private final UserRepository userRepository;
-    private final OpenAIService openAIService;
+    // private final OpenAIService openAIService; // Удален, так как логика OpenAI перенесена в контроллер
 
-    private User getCurrentAuthenticatedUser() {
+    // Метод для получения текущего аутентифицированного пользователя
+    public User getCurrentAuthenticatedUser() { // Сделал public, чтобы ChatController мог его использовать
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -40,39 +41,44 @@ public class ChatService {
             throw new IllegalStateException("Пользователь не аутентифицирован.");
         }
 
+        // Если Principal уже является объектом User (например, из UserDetailsService)
         if (authentication.getPrincipal() instanceof User) {
             User authenticatedUser = (User) authentication.getPrincipal();
             log.info("ChatService: Principal is custom User object. Email: {}, Role: {}", authenticatedUser.getEmail(), authenticatedUser.getRole());
             return authenticatedUser;
         }
 
+        // В противном случае, загружаем пользователя из репозитория по email
         String userEmail = authentication.getName();
         log.info("ChatService: Principal is not custom User object. Attempting to load user by email: {}", userEmail);
         return userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new IllegalStateException("Пользователь не найден в базе данных: " + userEmail));
     }
 
+    // Метод для сохранения сообщения чата
     @Transactional
-    public ChatMessage saveChatMessage(String polygonId, String sender, String messageText, List<ChatMessage> history) {
+    public ChatMessage saveChatMessage(String polygonId, String sender, String messageText) {
         User currentUser = getCurrentAuthenticatedUser();
         log.info("ChatService: Saving message for user ID: {}, role: {}", currentUser.getId(), currentUser.getRole());
 
+        // *** ВОССТАНОВЛЕНО: Пропускаем сохранение в БД для DEMO-пользователей ***
         if ("DEMO".equalsIgnoreCase(currentUser.getRole())) {
             log.info("ChatService: DEMO user detected. Skipping database save for chat message.");
-            ChatMessage demoMessage = ChatMessage.builder()
+            // Возвращаем фиктивное сообщение, так как оно не будет сохранено в БД
+            return ChatMessage.builder()
                     .id(UUID.randomUUID())
                     .sender(sender)
                     .text(messageText)
                     .timestamp(LocalDateTime.now())
                     .user(currentUser)
-                    .polygonArea(null)
+                    .polygonArea(null) // Для демо-полигонов, которые не в БД, polygonArea будет null
                     .build();
-            return demoMessage;
         }
 
         PolygonArea polygonArea = polygonAreaRepository.findById(UUID.fromString(polygonId))
                 .orElseThrow(() -> new RuntimeException("Полигон не найден с ID: " + polygonId));
 
+        // Проверка, принадлежит ли полигон текущему пользователю
         if (!polygonArea.getUser().getId().equals(currentUser.getId())) {
             log.warn("ChatService: User {} attempted to save message to polygon {} not owned by them.", currentUser.getId(), polygonId);
             throw new SecurityException("У вас нет разрешения на сохранение сообщения для этого полигона.");
@@ -89,34 +95,38 @@ public class ChatService {
         return chatMessageRepository.save(chatMessage);
     }
 
+    // Метод для получения сообщений чата по ID полигона
     @Transactional(readOnly = true)
     public List<ChatMessage> getChatMessagesByPolygonId(String polygonId) {
         User currentUser = getCurrentAuthenticatedUser();
         log.info("ChatService: Fetching messages for user ID: {}, role: {}", currentUser.getId(), currentUser.getRole());
 
+        // *** ВОССТАНОВЛЕНО: Возвращаем пустой список для DEMO-пользователей ***
         if ("DEMO".equalsIgnoreCase(currentUser.getRole())) {
-            log.info("ChatService: DEMO user detected. Returning empty list for chat history (frontend handles local storage).");
+            log.info("ChatService: DEMO user detected. Frontend handles local storage for chat history.");
             return List.of();
         }
 
         PolygonArea polygonArea = polygonAreaRepository.findById(UUID.fromString(polygonId))
                 .orElseThrow(() -> new RuntimeException("Полигон не найден с ID: " + polygonId));
 
+        // Проверка, принадлежит ли полигон текущему пользователю
         if (!polygonArea.getUser().getId().equals(currentUser.getId())) {
             log.warn("ChatService: User {} attempted to access messages for polygon {} not owned by them.", currentUser.getId(), polygonId);
             throw new SecurityException("У вас нет разрешения на просмотр сообщений для этого полигона.");
         }
 
-        // Эта строка правильна для реальных пользователей
-        return chatMessageRepository.findByUser_IdAndPolygonArea_IdOrderByTimestampAsc( // Исправлен порядок аргументов
-                currentUser.getId(), UUID.fromString(polygonId)); // Передаем userId первым, затем polygonId
+        return chatMessageRepository.findByUser_IdAndPolygonArea_IdOrderByTimestampAsc(
+                currentUser.getId(), UUID.fromString(polygonId));
     }
 
+    // Метод для удаления сообщений чата по ID полигона
     @Transactional
     public void deleteChatMessagesByPolygonId(String polygonId) {
         User currentUser = getCurrentAuthenticatedUser();
         log.info("ChatService: Deleting messages for user ID: {}, role: {}", currentUser.getId(), currentUser.getRole());
 
+        // *** ВОССТАНОВЛЕНО: Пропускаем удаление из БД для DEMO-пользователей ***
         if ("DEMO".equalsIgnoreCase(currentUser.getRole())) {
             log.info("ChatService: DEMO user detected. Skipping database delete for chat messages.");
             return;
@@ -134,14 +144,14 @@ public class ChatService {
         log.info("ChatService: Deleted chat messages for polygon ID: {} for user ID: {}", polygonId, currentUser.getId());
     }
 
-    public String getAiResponse(String userMessage, List<ChatMessage> history, String polygonId) {
+    // *** Метод getAiResponse удален из ChatService и его логика перенесена в ChatController ***
+    /*
+    public String getAiResponse(String userMessage, List<com.example.backend.AI.Message> history, String polygonId) {
         User currentUser = getCurrentAuthenticatedUser();
         log.info("ChatService: Getting AI response for user ID: {}, role: {}", currentUser.getId(), currentUser.getRole());
 
         Optional<PolygonArea> polygonOptional = Optional.empty();
-        if ("DEMO".equalsIgnoreCase(currentUser.getRole())) {
-            log.warn("ChatService: DEMO user, cannot fetch polygon from DB for AI context.");
-        } else {
+        if (!"DEMO".equalsIgnoreCase(currentUser.getRole())) {
             polygonOptional = polygonAreaRepository.findById(UUID.fromString(polygonId));
         }
 
@@ -168,4 +178,5 @@ public class ChatService {
 
         return openAIService.getChatCompletion(userMessage, aiHistory, polygonContext);
     }
+    */
 }

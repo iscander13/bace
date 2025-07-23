@@ -122,7 +122,7 @@ public class SentinelHubService {
     }
 
     /**
-     * Возвращает evalscript для различных типов анализа.
+     * Возвращает evalscript для различных типов анализа с улучшенными цветовыми палитрами.
      * @param analysisType Тип анализа (например, "NDVI", "TRUE_COLOR").
      * @return Строка evalscript.
      */
@@ -178,40 +178,28 @@ public class SentinelHubService {
                    "    rgb_with_alpha[2] * 255,\n" +
                    "    rgb_with_alpha[3] * 255 // Альфа-канал уже учтен в visualizer, умножаем на 255\n" +
                    "  ];\n" +
-                   "}\n" +
-                   "// Функция для определения, является ли пиксель облаком на основе SCL (Scene Classification Layer)\n" +
-                   "function isCloud (scl) {\n" +
-                   "  if (scl === 3) { // SC_CLOUD_SHADOW (Тени от облаков) - не облако\n" +
-                   "    return false;\n" +
-                   "  } else if (scl === 9) { // SC_CLOUD_HIGH_PROBA (Высокая вероятность облаков) - облако\n" +
-                   "    return true;\n" +
-                   "  } else if (scl === 8) { // SC_CLOUD_MEDIUM_PROBA (Средняя вероятность облаков) - облако\n" +
-                   "    return true;\n" +
-                   "  } else if (scl === 7) { // SC_CLOUD_LOW_PROBA (Низкая вероятность облаков) - не облако\n" +
-                   "    return false;\n" +
-                   "  } else if (scl === 10) { // SC_THIN_CIRRUS (Тонкие перистые облака) - облако\n" +
-                   "    return true;\n" +
-                   "  } else if (scl === 11) { // SC_SNOW_ICE (Снег / Лед) - не облако\n" +
-                   "    return false;\n" +
-                   "  } else if (scl === 1) { // SC_SATURATED_DEFECTIVE (Насыщенные / Дефектные пиксели) - не облако\n" +
-                   "    return false;\n" +
-                   "  } else if (scl === 2) { // SC_DARK_FEATURE_SHADOW (Тени от темных объектов) - не облако\n" +
-                   "    return false;\n" +
-                   "  }\n" +
-                   "  return false; // По умолчанию, если значение SCL не соответствует известным типам облаков\n" +
-                   "}";
+                   "}\n";
             case "TRUE_COLOR":
             case "1_TRUE_COLOR":
             case "1_TRUE-COLOR-L1C":
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B02\", \"B03\", \"B04\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B02\", \"B03\", \"B04\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "function evaluatePixel(samples) {\n" +
-                       "  return [samples.B04 * 255, samples.B03 * 255, samples.B02 * 255, samples.dataMask * 255];\n" +
+                       "  if (samples.dataMask === 0) {\n" +
+                       "    return [0, 0, 0, 0]; // Полностью прозрачный, если нет данных\n" +
+                       "  }\n" +
+                       "  // Простая гамма-коррекция или масштабирование для улучшения контраста\n" +
+                       "  // Значения могут быть от 0 до 1, поэтому умножаем на 2.55, чтобы получить 0-255 для UINT8\n" +
+                       "  let red = samples.B04 * 2.5; \n" +
+                       "  let green = samples.B03 * 2.5;\n" +
+                       "  let blue = samples.B02 * 2.5;\n" +
+                       "\n" +
+                       "  return [red * 255, green * 255, blue * 255, samples.dataMask * 255];\n" +
                        "}";
             case "FALSE_COLOR":
             case "2_FALSE_COLOR":
@@ -219,12 +207,16 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B08\", \"B04\", \"B03\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B08\", \"B04\", \"B03\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "function evaluatePixel(samples) {\n" +
-                       "  return [samples.B08 * 255, samples.B04 * 255, samples.B03 * 255, samples.dataMask * 255];\n" +
+                       "  if (samples.dataMask === 0) {\n" +
+                       "    return [0, 0, 0, 0];\n" +
+                       "  }\n" +
+                       "  // Усиление красного канала (NIR) для лучшего выделения растительности\n" +
+                       "  return [samples.B08 * 2.55, samples.B04 * 2.55, samples.B03 * 2.55, samples.dataMask * 255];\n" +
                        "}";
             case "FALSE_COLOR_URBAN":
             case "4-FALSE-COLOR-URBAN":
@@ -232,12 +224,16 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B11\", \"B08\", \"B04\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B11\", \"B08\", \"B04\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "function evaluatePixel(samples) {\n" +
-                       "  return [samples.B11 * 255, samples.B08 * 255, samples.B04 * 255, samples.dataMask * 255];\n" +
+                       "  if (samples.dataMask === 0) {\n" +
+                       "    return [0, 0, 0, 0];\n" +
+                       "  }\n" +
+                       "  // Применение масштабирования для улучшения визуализации\n" +
+                       "  return [samples.B11 * 2.55, samples.B08 * 2.55, samples.B04 * 2.55, samples.dataMask * 255];\n" +
                        "}";
             case "MOISTURE_INDEX":
             case "5-MOISTURE-INDEX1":
@@ -245,23 +241,28 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B08\", \"B11\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B08\", \"B11\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
+                       "\n" +
+                       "// Модифицированная цветовая палитра для индекса влажности (NDMI-подобный)\n" +
+                       "const moistureRamp = [\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Прозрачный для NoData\n" +
+                       "  [-0.2, [0.8, 0.8, 0.8, 1]],    // Сухие или голые участки (серый/белый)\n" +
+                       "  [ 0.0, [0.9, 0.7, 0.5, 1]],    // Участки с низкой влажностью (светло-коричневый)\n" +
+                       "  [ 0.2, [0.7, 0.5, 0.3, 1]],    // Средняя влажность (коричневый)\n" +
+                       "  [ 0.4, [0.4, 0.3, 0.1, 1]],    // Высокая влажность (темно-коричневый)\n" +
+                       "  [ 0.6, [0.2, 0.1, 0.0, 1]],    // Очень высокая влажность (почти черный)\n" +
+                       "  [ 1.0, [0.1, 0.05, 0.0, 1]]    // Максимальная влажность\n" +
+                       "];\n" +
+                       "const moistureVisualizer = new ColorRampVisualizer(moistureRamp);\n" +
+                       "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
-                       "  let val = (samples.B08 - samples.B11) / (samples.B08 + samples.B11);\n" +
-                       "  let color = colorBlend(val, [-1, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1], [\n" +
-                       "    [0, 0, 0, 0], \n" +
-                       "    [0.9, 0.9, 0.9, 1], \n" +
-                       "    [0.9, 0.7, 0.7, 1], \n" +
-                       "    [0.7, 0.5, 0.5, 1], \n" +
-                       "    [0.5, 0.3, 0.3, 1], \n" +
-                       "    [0.3, 0.1, 0.1, 1], \n" +
-                       "    [0.1, 0.0, 0.0, 1], \n" +
-                       "    [0.0, 0.0, 0.0, 1]  \n" +
-                       "  ]);\n" +
+                       "  let val = (samples.B08 - samples.B11) / (samples.B08 + samples.B11); // Пример NDMI-подобного индекса\n" +
+                       "\n" +
+                       "  let color = moistureVisualizer.process(val);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "NDSI":
@@ -270,21 +271,26 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B03\", \"B11\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B03\", \"B11\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
+                       "\n" +
+                       "const ndsiRamp = [\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],   // Прозрачный для NoData\n" +
+                       "  [ 0.0, [0.0, 0.0, 0.0, 0]],   // Прозрачный для не-снежных областей\n" +
+                       "  [ 0.1, [0.7, 0.7, 0.7, 1]],   // Сероватый, очень мало снега/льда\n" +
+                       "  [ 0.3, [0.8, 0.8, 0.9, 1]],   // Светло-голубой, умеренное количество снега/льда\n" +
+                       "  [ 0.5, [0.9, 0.9, 1.0, 1]],   // Синевато-белый, значительное количество снега/льда\n" +
+                       "  [ 1.0, [1.0, 1.0, 1.0, 1]]    // Чистый белый, плотный снег/лед\n" +
+                       "];\n" +
+                       "const ndsiVisualizer = new ColorRampVisualizer(ndsiRamp);\n" +
+                       "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
                        "  let val = (samples.B03 - samples.B11) / (samples.B03 + samples.B11);\n" +
-                       "  let color = colorBlend(val, [-1, 0, 0.2, 0.4, 0.6, 1], [\n" +
-                       "    [0, 0, 0, 0], \n" +
-                       "    [0.7, 0.7, 0.7, 1], \n" +
-                       "    [0.5, 0.8, 0.9, 1], \n" +
-                       "    [0.8, 0.9, 1.0, 1], \n" +
-                       "    [0.9, 0.9, 1.0, 1], \n" +
-                       "    [1.0, 1.0, 1.0, 1]  \n" +
-                       "  ]);\n" +
+                       "\n" +
+                       "  let color = ndsiVisualizer.process(val);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "NDWI":
@@ -293,22 +299,27 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B03\", \"B08\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B03\", \"B08\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
+                       "\n" +
+                       "const ndwiRamp = [\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Прозрачный для NoData\n" +
+                       "  [-0.2, [0.9, 0.9, 0.9, 1]],    // Сухие поверхности, земля (серый)\n" +
+                       "  [ 0.0, [0.7, 0.7, 0.9, 1]],    // Влажная почва, переходные зоны (светло-голубой)\n" +
+                       "  [ 0.2, [0.5, 0.5, 0.9, 1]],    // Влажные поверхности, низкая водность (средне-голубой)\n" +
+                       "  [ 0.4, [0.3, 0.3, 0.7, 1]],    // Вода (темно-голубой)\n" +
+                       "  [ 0.6, [0.1, 0.1, 0.5, 1]],    // Глубокая вода, чистая вода (очень темно-синий)\n" +
+                       "  [ 1.0, [0.0, 0.0, 0.3, 1]]     // Максимальная водность (почти черный)\n" +
+                       "];\n" +
+                       "const ndwiVisualizer = new ColorRampVisualizer(ndwiRamp);\n" +
+                       "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
                        "  let val = (samples.B03 - samples.B08) / (samples.B03 + samples.B08);\n" +
-                       "  let color = colorBlend(val, [-1, -0.2, 0, 0.2, 0.4, 0.6, 1], [\n" +
-                       "    [0, 0, 0, 0], \n" +
-                       "    [0.9, 0.9, 0.9, 1], \n" +
-                       "    [0.7, 0.7, 0.9, 1], \n" +
-                       "    [0.5, 0.5, 0.9, 1], \n" +
-                       "    [0.3, 0.3, 0.7, 1], \n" +
-                       "    [0.1, 0.1, 0.5, 1], \n" +
-                       "    [0.0, 0.0, 0.3, 1]  \n" +
-                       "  ]);\n" +
+                       "\n" +
+                       "  let color = ndwiVisualizer.process(val);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "SWIR":
@@ -317,12 +328,16 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B12\", \"B11\", \"B08\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B12\", \"B11\", \"B08\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "function evaluatePixel(samples) {\n" +
-                       "  return [samples.B12 * 255, samples.B11 * 255, samples.B08 * 255, samples.dataMask * 255];\n" +
+                       "  if (samples.dataMask === 0) {\n" +
+                       "    return [0, 0, 0, 0];\n" +
+                       "  }\n" +
+                       "  // Применение масштабирования для улучшения визуализации\n" +
+                       "  return [samples.B12 * 2.55, samples.B11 * 2.55, samples.B08 * 2.55, samples.dataMask * 255];\n" +
                        "}";
             case "SCENE_CLASSIFICATION":
             case "SCENE-CLASSIFICATION":
@@ -337,17 +352,19 @@ public class SentinelHubService {
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
                        "  let scl = samples.SCL;\n" +
                        "  let color = [0, 0, 0, 0]; \n" +
-                       "  if (scl === 1) color = [0.65, 0.65, 0.65, 1]; \n" +
-                       "  else if (scl === 2) color = [0.8, 0.8, 0.8, 1]; \n" +
-                       "  else if (scl === 3) color = [0.9, 0.9, 0.9, 1]; \n" +
-                       "  else if (scl === 4) color = [0.1, 0.5, 0.1, 1]; \n" +
-                       "  else if (scl === 5) color = [0.8, 0.6, 0.2, 1]; \n" +
-                       "  else if (scl === 6) color = [0.1, 0.1, 0.8, 1]; \n" +
-                       "  else if (scl === 7) color = [0.9, 0.9, 0.1, 1]; \n" +
-                       "  else if (scl === 8) color = [0.7, 0.7, 0.7, 1]; \n" +
-                       "  else if (scl === 9) color = [0.9, 0.9, 0.9, 1]; \n" +
-                       "  else if (scl === 10) color = [0.9, 0.9, 0.9, 1]; \n" +
-                       "  else if (scl === 11) color = [0.9, 0.9, 0.9, 1]; \n" +
+                       "\n" +
+                       "  if (scl === 1) color = [0.65, 0.65, 0.65, 1]; // SC_SATURATED_DEFECTIVE (Серый)\n" +
+                       "  else if (scl === 2) color = [0.8, 0.8, 0.8, 1]; // SC_DARK_FEATURE_SHADOW (Светло-серый)\n" +
+                       "  else if (scl === 3) color = [0.9, 0.9, 0.9, 1]; // SC_CLOUD_SHADOW (Белый/очень светло-серый)\n" +
+                       "  else if (scl === 4) color = [0.1, 0.5, 0.1, 1]; // SC_VEGETATION (Зеленый)\n" +
+                       "  else if (scl === 5) color = [0.8, 0.6, 0.2, 1]; // SC_NOT_VEGETATED (Коричневый)\n" +
+                       "  else if (scl === 6) color = [0.1, 0.1, 0.8, 1]; // SC_WATER (Синий)\n" +
+                       "  else if (scl === 7) color = [0.9, 0.9, 0.1, 1]; // SC_CLOUD_LOW_PROBA (Светло-желтый)\n" +
+                       "  else if (scl === 8) color = [0.7, 0.7, 0.7, 1]; // SC_CLOUD_MEDIUM_PROBA (Средне-серый)\n" +
+                       "  else if (scl === 9) color = [0.9, 0.9, 0.9, 1]; // SC_CLOUD_HIGH_PROBA (Белый)\n" +
+                       "  else if (scl === 10) color = [0.9, 0.9, 0.9, 1]; // SC_THIN_CIRRUS (Белый)\n" +
+                       "  else if (scl === 11) color = [0.9, 0.9, 0.9, 1]; // SC_SNOW_ICE (Белый)\n" +
+                       "  \n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "HIGHLIGHT_OPTIMIZED_NATURAL_COLOR":
@@ -356,12 +373,28 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B02\", \"B03\", \"B04\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
+                       "    input: [{ bands: [\"B02\", \"B03\", \"B04\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "function evaluatePixel(samples) {\n" +
-                       "  return [samples.B04 * 255, samples.B03 * 255, samples.B02 * 255, samples.dataMask * 255];\n" +
+                       "  if (samples.dataMask === 0) {\n" +
+                       "    return [0, 0, 0, 0];\n" +
+                       "  }\n" +
+                       "  \n" +
+                       "  // Применение легкой тональной компрессии (tone mapping) для улучшения яркости\n" +
+                       "  // и предотвращения перенасыщения в ярких областях\n" +
+                       "  let factor = 2.5; // Коэффициент усиления\n" +
+                       "  let R = samples.B04 * factor;\n" +
+                       "  let G = samples.B03 * factor;\n" +
+                       "  let B = samples.B02 * factor;\n" +
+                       "\n" +
+                       "  // Простой алгоритм тональной компрессии (например, на основе логистической функции)\n" +
+                       "  R = R / (R + 1);\n" +
+                       "  G = G / (G + 1);\n" +
+                       "  B = B / (B + 1);\n" +
+                       "\n" +
+                       "  return [R * 255, G * 255, B * 255, samples.dataMask * 255];\n" +
                        "}";
 
             default:
