@@ -49,4 +49,18 @@ public class PolygonArea {
 
     @Column(name = "geo_json", columnDefinition = "TEXT") // Теперь это поле будет содержать только GeoJSON Geometry
     private String geoJson;
+
+    // НОВОЕ ПОЛЕ: для хранения ID полигона в системе Agromonitoring
+    @Column(name = "agromonitoring_polygon_id")
+    private String agromonitoringPolygonId;
+
+    // Геттер для agromonitoringPolygonId
+    public String getAgromonitoringPolygonId() {
+        return agromonitoringPolygonId;
+    }
+
+    // Сеттер для agromonitoringPolygonId
+    public void setAgromonitoringPolygonId(String agromonitoringPolygonId) {
+        this.agromonitoringPolygonId = agromonitoringPolygonId;
+    }
 }

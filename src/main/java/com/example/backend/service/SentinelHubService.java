@@ -144,20 +144,17 @@ public class SentinelHubService {
                    "  };\n" +
                    "}\n" +
                    "\n" +
-                   "// Улучшенный плавный градиент NDVI с явным альфа-каналом для более четких переходов от желтого к зеленому\n" +
+                   "// Улучшенный плавный градиент NDVI: от красного (низкое NDVI) до темно-зеленого (высокое NDVI) с желтым в середине.\n" +
                    "const ramp = [\n" +
                    "  [-1.0, [0.0, 0.0, 0.0, 0]],   // Полностью прозрачный для значений < -0.2 (вода, облака, снег, нет данных)\n" +
-                   "  [-0.2, [0.0, 0.0, 0.0, 0]],   // Продолжаем прозрачность\n" +
-                   "  [ 0.0, [0.95, 0.95, 0.95, 0.6]], // Почти белый/светло-серый для голой почвы/очень редкой растительности, полупрозрачный\n" +
-                   "  [ 0.05, [0.98, 0.9, 0.5, 1]], // Светло-желтый (едва заметная растительность или сухая трава)\n" +
-                   "  [ 0.1, [0.93, 0.85, 0.4, 1]], // Желтый (начало вегетации, стрессовое состояние)\n" +
-                   "  [ 0.15, [0.85, 0.75, 0.3, 1]], // Более насыщенный желтый\n" +
-                   "  [ 0.2, [0.75, 0.7, 0.25, 1]], // Желто-зеленый переход\n" +
-                   "  [ 0.25, [0.6, 0.65, 0.2, 1]], // Салатовый (молодая или не очень здоровая растительность)\n" +
-                   "  [ 0.3, [0.45, 0.6, 0.15, 1]], // Светло-зеленый\n" +
-                   "  [ 0.35, [0.3, 0.55, 0.1, 1]], // Средне-зеленый\n" +
-                   "  [ 0.4, [0.15, 0.5, 0.05, 1]], // Темно-зеленый (здоровая растительность)\n" +
-                   "  [ 0.5, [0.05, 0.4, 0.0, 1]], // Очень темно-зеленый\n" +
+                   "  [-0.2, [0.0, 0.0, 0.0, 0]],   // Продолжаем прозрачность для очень низких/NoData значений\n" +
+                   "  [ 0.0, [0.9, 0.1, 0.1, 1]],   // Красный для голой почвы/очень низкой растительности\n" +
+                   "  [ 0.1, [0.9, 0.4, 0.1, 1]],   // Оранжево-красный\n" +
+                   "  [ 0.2, [0.9, 0.7, 0.1, 1]],   // Желто-оранжевый\n" +
+                   "  [ 0.3, [0.8, 0.8, 0.2, 1]],   // Желтый (середина, стрессовое состояние)\n" +
+                   "  [ 0.4, [0.6, 0.7, 0.2, 1]],   // Светло-зеленый с желтоватым оттенком\n" +
+                   "  [ 0.5, [0.4, 0.6, 0.15, 1]],  // Средне-зеленый\n" +
+                   "  [ 0.6, [0.2, 0.5, 0.1, 1]],   // Темно-зеленый\n" +
                    "  [ 1.0, [0.0, 0.3, 0.0, 1]]    // Максимально темно-зеленый (очень плотная/здоровая растительность)\n" +
                    "];\n" +
                    "const visualizer = new ColorRampVisualizer(ramp);\n" +
@@ -193,13 +190,19 @@ public class SentinelHubService {
                        "  if (samples.dataMask === 0) {\n" +
                        "    return [0, 0, 0, 0]; // Полностью прозрачный, если нет данных\n" +
                        "  }\n" +
-                       "  // Простая гамма-коррекция или масштабирование для улучшения контраста\n" +
-                       "  // Значения могут быть от 0 до 1, поэтому умножаем на 2.55, чтобы получить 0-255 для UINT8\n" +
-                       "  let red = samples.B04 * 2.5; \n" +
-                       "  let green = samples.B03 * 2.5;\n" +
-                       "  let blue = samples.B02 * 2.5;\n" +
+                       "  // Simple scaling and gamma correction for natural colors\n" +
+                       "  let gain = 3.5; // Increased gain for better brightness\n" +
+                       "  let red = samples.B04 * gain;\n" +
+                       "  let green = samples.B03 * gain;\n" +
+                       "  let blue = samples.B02 * gain;\n" +
                        "\n" +
-                       "  return [red * 255, green * 255, blue * 255, samples.dataMask * 255];\n" +
+                       "  // Apply a gamma correction (e.g., power of 0.8 to brighten mid-tones)\n" +
+                       "  red = Math.pow(red, 0.8);\n" +
+                       "  green = Math.pow(green, 0.8);\n" +
+                       "  blue = Math.pow(blue, 0.8);\n" +
+                       "\n" +
+                       "  // Clip values to 1.0 (max) and convert to 0-255\n" +
+                       "  return [Math.min(red, 1.0) * 255, Math.min(green, 1.0) * 255, Math.min(blue, 1.0) * 255, samples.dataMask * 255];\n" +
                        "}";
             case "FALSE_COLOR":
             case "2_FALSE_COLOR":
@@ -215,8 +218,21 @@ public class SentinelHubService {
                        "  if (samples.dataMask === 0) {\n" +
                        "    return [0, 0, 0, 0];\n" +
                        "  }\n" +
-                       "  // Усиление красного канала (NIR) для лучшего выделения растительности\n" +
-                       "  return [samples.B08 * 2.55, samples.B04 * 2.55, samples.B03 * 2.55, samples.dataMask * 255];\n" +
+                       "  // False Color (NIR, Red, Green) - Vegetation appears bright red.\n" +
+                       "  // B08 (NIR) -> Red channel\n" +
+                       "  // B04 (Red) -> Green channel\n" +
+                       "  // B03 (Green) -> Blue channel\n" +
+                       "  let gain = 3.5; // Increased gain for better visibility\n" +
+                       "  let red = samples.B08 * gain;\n" +
+                       "  let green = samples.B04 * gain;\n" +
+                       "  let blue = samples.B03 * gain;\n" +
+                       "\n" +
+                       "  // Simple tone mapping (e.g., logistic function) or clipping\n" +
+                       "  red = Math.min(red, 1.0);\n" +
+                       "  green = Math.min(green, 1.0);\n" +
+                       "  blue = Math.min(blue, 1.0);\n" +
+                       "\n" +
+                       "  return [red * 255, green * 255, blue * 255, samples.dataMask * 255];\n" +
                        "}";
             case "FALSE_COLOR_URBAN":
             case "4-FALSE-COLOR-URBAN":
@@ -224,7 +240,8 @@ public class SentinelHubService {
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B11\", \"B08\", \"B04\", \"dataMask\"] }],\n" +
+                       "    // Based on your image: B12, B11, B04. For L2A, these bands are available.\n" +
+                       "    input: [{ bands: [\"B12\", \"B11\", \"B04\", \"dataMask\"] }], \n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
@@ -232,112 +249,153 @@ public class SentinelHubService {
                        "  if (samples.dataMask === 0) {\n" +
                        "    return [0, 0, 0, 0];\n" +
                        "  }\n" +
-                       "  // Применение масштабирования для улучшения визуализации\n" +
-                       "  return [samples.B11 * 2.55, samples.B08 * 2.55, samples.B04 * 2.55, samples.dataMask * 255];\n" +
+                       "  // False Color Urban (SWIR2, SWIR1, Red) - Highlights urban areas.\n" +
+                       "  // B12 (SWIR2) -> Red channel\n" +
+                       "  // B11 (SWIR1) -> Green channel\n" +
+                       "  // B04 (Red)   -> Blue channel\n" +
+                       "  let gain = 3.0; // Adjust gain for better visualization\n" +
+                       "  let red = samples.B12 * gain;\n" +
+                       "  let green = samples.B11 * gain;\n" +
+                       "  let blue = samples.B04 * gain;\n" +
+                       "\n" +
+                       "  red = Math.min(red, 1.0);\n" +
+                       "  green = Math.min(green, 1.0);\n" +
+                       "  blue = Math.min(blue, 1.0);\n" +
+                       "\n" +
+                       "  return [red * 255, green * 255, blue * 255, samples.dataMask * 255];\n" +
                        "}";
             case "MOISTURE_INDEX":
             case "5-MOISTURE-INDEX1":
             case "5-MOISTURE-INDEX1-L1C":
+                // NDMI (Normalized Difference Moisture Index) or similar for plant moisture
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B08\", \"B11\", \"dataMask\"] }],\n" +
+                       "    // Using B08 (NIR) and B11 (SWIR1) for NDMI as per your image\n" +
+                       "    input: [{ bands: [\"B08\", \"B11\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "\n" +
-                       "// Модифицированная цветовая палитра для индекса влажности (NDMI-подобный)\n" +
+                       "// Modified color palette for moisture index (NDMI-like): yellow/brown for dry, dark blue/turquoise for high moisture\n" +
                        "const moistureRamp = [\n" +
-                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Прозрачный для NoData\n" +
-                       "  [-0.2, [0.8, 0.8, 0.8, 1]],    // Сухие или голые участки (серый/белый)\n" +
-                       "  [ 0.0, [0.9, 0.7, 0.5, 1]],    // Участки с низкой влажностью (светло-коричневый)\n" +
-                       "  [ 0.2, [0.7, 0.5, 0.3, 1]],    // Средняя влажность (коричневый)\n" +
-                       "  [ 0.4, [0.4, 0.3, 0.1, 1]],    // Высокая влажность (темно-коричневый)\n" +
-                       "  [ 0.6, [0.2, 0.1, 0.0, 1]],    // Очень высокая влажность (почти черный)\n" +
-                       "  [ 1.0, [0.1, 0.05, 0.0, 1]]    // Максимальная влажность\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Transparent for NoData\n" +
+                       "  [-0.2, [0.9, 0.8, 0.6, 1]],    // Dry or bare areas (pale yellow/light brown)\n" +
+                       "  [ 0.0, [0.7, 0.6, 0.4, 1]],    // Low moisture (brownish)\n" +
+                       "  [ 0.2, [0.4, 0.3, 0.1, 1]],    // Medium moisture (darker brown)\n" +
+                       "  [ 0.4, [0.1, 0.1, 0.7, 1]],    // High moisture (dark blue)\n" +
+                       "  [ 0.6, [0.05, 0.05, 0.5, 1]],  // Very high moisture (deeper blue)\n" +
+                       "  [ 1.0, [0.0, 0.0, 0.3, 1]]     // Maximum moisture (very dark blue)\n" +
                        "];\n" +
                        "const moistureVisualizer = new ColorRampVisualizer(moistureRamp);\n" +
                        "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
-                       "  let val = (samples.B08 - samples.B11) / (samples.B08 + samples.B11); // Пример NDMI-подобного индекса\n" +
-                       "\n" +
-                       "  let color = moistureVisualizer.process(val);\n" +
+                       "  // NDMI formula (NIR - SWIR) / (NIR + SWIR)\n" +
+                       "  let ndmi = (samples.B08 - samples.B11) / (samples.B08 + samples.B11);\n" +
+                       "  let color = moistureVisualizer.process(ndmi);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "NDSI":
             case "8-NDSI":
             case "8-NDSI-L1C":
+                // NDSI (Normalized Difference Snow Index)
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B03\", \"B11\", \"dataMask\"] }],\n" +
+                       "    // Using B03 (Green) and B11 (SWIR1) for NDSI as per your image\n" +
+                       "    input: [{ bands: [\"B03\", \"B11\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "\n" +
                        "const ndsiRamp = [\n" +
-                       "  [-1.0, [0.0, 0.0, 0.0, 0]],   // Прозрачный для NoData\n" +
-                       "  [ 0.0, [0.0, 0.0, 0.0, 0]],   // Прозрачный для не-снежных областей\n" +
-                       "  [ 0.1, [0.7, 0.7, 0.7, 1]],   // Сероватый, очень мало снега/льда\n" +
-                       "  [ 0.3, [0.8, 0.8, 0.9, 1]],   // Светло-голубой, умеренное количество снега/льда\n" +
-                       "  [ 0.5, [0.9, 0.9, 1.0, 1]],   // Синевато-белый, значительное количество снега/льда\n" +
-                       "  [ 1.0, [1.0, 1.0, 1.0, 1]]    // Чистый белый, плотный снег/лед\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],   // Transparent for NoData\n" +
+                       "  [ 0.0, [0.9, 0.1, 0.1, 1]],   // Red for non-snow/ice (-1 to 0)\n" +
+                       "  [ 0.1, [0.9, 0.5, 0.1, 1]],   // Orange for very little snow/ice\n" +
+                       "  [ 0.3, [0.9, 0.9, 0.1, 1]],   // Yellow for moderate snow/ice (0 to 0.5)\n" +
+                       "  [ 0.5, [0.5, 0.7, 0.9, 1]],   // Light blue for significant snow/ice (0.5 to 1)\n" +
+                       "  [ 0.7, [0.2, 0.4, 0.8, 1]],   // Blue for clear snow/ice\n" +
+                       "  [ 1.0, [0.0, 0.0, 0.6, 1]]    // Dark blue for dense snow/ice\n" +
                        "];\n" +
                        "const ndsiVisualizer = new ColorRampVisualizer(ndsiRamp);\n" +
                        "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
-                       "  let val = (samples.B03 - samples.B11) / (samples.B03 + samples.B11);\n" +
+                       "  // NDSI formula (Green - SWIR) / (Green + SWIR)\n" +
+                       "  let ndsi = (samples.B03 - samples.B11) / (samples.B03 + samples.B11);\n" +
                        "\n" +
-                       "  let color = ndsiVisualizer.process(val);\n" +
+                       "  let color = ndsiVisualizer.process(ndsi);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "NDWI":
             case "7-NDWI":
             case "7-NDWI-L1C":
+                // NDWI (Normalized Difference Water Index)
                 return "//VERSION=3\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B03\", \"B08\", \"dataMask\"] }],\n" +
+                       "    // Using B03 (Green) and B08 (NIR) for NDWI as per your image\n" +
+                       "    input: [{ bands: [\"B03\", \"B08\", \"dataMask\"], sampleType: \"FLOAT32\" }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
                        "\n" +
                        "const ndwiRamp = [\n" +
-                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Прозрачный для NoData\n" +
-                       "  [-0.2, [0.9, 0.9, 0.9, 1]],    // Сухие поверхности, земля (серый)\n" +
-                       "  [ 0.0, [0.7, 0.7, 0.9, 1]],    // Влажная почва, переходные зоны (светло-голубой)\n" +
-                       "  [ 0.2, [0.5, 0.5, 0.9, 1]],    // Влажные поверхности, низкая водность (средне-голубой)\n" +
-                       "  [ 0.4, [0.3, 0.3, 0.7, 1]],    // Вода (темно-голубой)\n" +
-                       "  [ 0.6, [0.1, 0.1, 0.5, 1]],    // Глубокая вода, чистая вода (очень темно-синий)\n" +
-                       "  [ 1.0, [0.0, 0.0, 0.3, 1]]     // Максимальная водность (почти черный)\n" +
+                       "  [-1.0, [0.0, 0.0, 0.0, 0]],    // Transparent for NoData\n" +
+                       "  [-0.3, [0.9, 0.9, 0.7, 1]],    // Pale yellow to brown for drought/dry surfaces\n" +
+                       "  [ 0.0, [0.7, 0.9, 0.7, 1]],    // Yellow-green for dry soil, vegetation\n" +
+                       "  [ 0.2, [0.4, 0.8, 0.9, 1]],    // Cyan-turquoise for flooded areas or wet soil\n" +
+                       "  [ 0.5, [0.1, 0.4, 0.8, 1]],    // Saturated blue for open water\n" +
+                       "  [ 1.0, [0.0, 0.1, 0.5, 1]]     // Deep blue for maximum water presence\n" +
                        "];\n" +
                        "const ndwiVisualizer = new ColorRampVisualizer(ndwiRamp);\n" +
                        "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) return [0, 0, 0, 0];\n" +
-                       "  let val = (samples.B03 - samples.B08) / (samples.B03 + samples.B08);\n" +
+                       "  // NDWI formula (Green - NIR) / (Green + NIR)\n" +
+                       "  let ndwi = (samples.B03 - samples.B08) / (samples.B03 + samples.B08);\n" +
                        "\n" +
-                       "  let color = ndwiVisualizer.process(val);\n" +
+                       "  let color = ndwiVisualizer.process(ndwi);\n" +
                        "  return [color[0] * 255, color[1] * 255, color[2] * 255, color[3] * 255];\n" +
                        "}";
             case "SWIR":
             case "6-SWIR":
             case "6-SWIR-L1C":
                 return "//VERSION=3\n" +
+                       "let minVal = 0.0; // Adjust as needed for better visualization\n" +
+                       "let maxVal = 0.4; // Adjust as needed for better visualization\n" +
+                       "let viz = new HighlightCompressVisualizer(minVal, maxVal);\n" +
+                       "\n" +
                        "function setup() {\n" +
                        "  return {\n" +
-                       "    input: [{ bands: [\"B12\", \"B11\", \"B08\", \"dataMask\"] }],\n" +
+                       "    // Corrected bands based on your image and L2A compatibility: B12, B08, B04.\n" +
+                       "    // Using B08 instead of B08A to avoid 'no band B08A' error for S2L2A\n" +
+                       "    input: [{ bands: [\"B12\", \"B08\", \"B04\", \"dataMask\"] }],\n" +
                        "    output: { bands: 4, sampleType: \"UINT8\" }\n" +
                        "  };\n" +
                        "}\n" +
+                       "\n" +
                        "function evaluatePixel(samples) {\n" +
                        "  if (samples.dataMask === 0) {\n" +
                        "    return [0, 0, 0, 0];\n" +
                        "  }\n" +
-                       "  // Применение масштабирования для улучшения визуализации\n" +
-                       "  return [samples.B12 * 2.55, samples.B11 * 2.55, samples.B08 * 2.55, samples.dataMask * 255];\n" +
+                       "  // SWIR composite (SWIR2, NIR, Red) -> (B12, B08, B04) to (Red, Green, Blue)\n" +
+                       "  // Vegetation - bright green (fluorescent)\n" +
+                       "  // Water - black or blue\n" +
+                       "  // Burned areas/fires - red/orange SWIR reflection areas\n" +
+                       "  // Urban - white-turquoise, brownish-pink shades\n" +
+                       "\n" +
+                       "  // Use HighlightCompressVisualizer for better contrast\n" +
+                       "  let val = [samples.B12, samples.B08, samples.B04, samples.dataMask];\n" +
+                       "  let rgb_with_alpha = viz.processList(val);\n" +
+                       "\n" +
+                       "  return [\n" +
+                       "    rgb_with_alpha[0] * 255,\n" +
+                       "    rgb_with_alpha[1] * 255,\n" +
+                       "    rgb_with_alpha[2] * 255,\n" +
+                       "    rgb_with_alpha[3] * 255\n" +
+                       "  ];\n" +
                        "}";
             case "SCENE_CLASSIFICATION":
             case "SCENE-CLASSIFICATION":

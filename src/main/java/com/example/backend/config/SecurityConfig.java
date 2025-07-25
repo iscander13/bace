@@ -1,3 +1,4 @@
+// src/main/java/com/example/backend/config/SecurityConfig.java
 package com.example.backend.config;
 
 import com.example.backend.JWT.JwtAuthenticationFilter;
@@ -36,41 +37,21 @@ public class SecurityConfig {
             .csrf().disable() // Отключаем CSRF для REST API
             .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Настраиваем CORS
             .authorizeHttpRequests(auth -> auth
-                // Разрешаем доступ к Swagger UI и API документации
+                // !!! ВРЕМЕННОЕ ИЗМЕНЕНИЕ ДЛЯ ОТЛАДКИ: Разрешаем все /api/** запросы
+                // Если это поможет, то проблема была в более специфичных requestMatchers
+                .requestMatchers("/api/**").permitAll() 
+                
+                // Разрешаем доступ к Swagger UI и API документации (можно оставить, но /api/** уже все разрешит)
                 .requestMatchers(
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/swagger-resources/**",
                     "/webjars/**",
-                    // Разрешаем доступ к эндпоинтам аутентификации и восстановления пароля
-                    "/api/v1/auth/**",
-                    "/api/v1/recovery/**",
-                    // Базовые пути, которые могут быть доступны без аутентификации (например, корневой URL)
                     "/",
-                    "/error",
-                    "/api/contact/send" // <-- ДОБАВЛЕНО: Разрешаем доступ к эндпоинту отправки контактов
-                ).permitAll() // Эти пути доступны всем
+                    "/error"
+                ).permitAll() 
                 
-                // --- НОВЫЕ ПРАВИЛА: Разрешаем DEMO, USER, ADMIN, SUPER_ADMIN доступ к эндпоинтам данных ---
-                // Это позволит демо-пользователю видеть данные
-                // Замените "USER" на "ROLE_USER", "ADMIN" на "ROLE_ADMIN" и т.д., если используете префикс "ROLE_"
-                // в вашем UserDetails.getAuthorities()
-                .requestMatchers("/api/v1/crops/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
-                .requestMatchers("/api/polygons/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
-                // Добавьте сюда другие эндпоинты, к которым демо-пользователь должен иметь доступ для просмотра
-                // Например:
-                // .requestMatchers("/api/v1/analytics/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
-
-                .requestMatchers("/api/chat/**").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN", "DEMO")
-                // Только пользователи с ролью "ADMIN" или "SUPER_ADMIN" могут получить доступ к /api/v1/admin/**
-                .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                
-                // Все остальные API-эндпоинты, начинающиеся с /api/, требуют аутентификации
-                // (но не требуют конкретной роли, если только это не /api/v1/admin/** или выше)
-                // Это правило должно быть после более специфичных правил
-                .requestMatchers("/api/**").authenticated()
-                
-                // Все остальные запросы (не /api) также требуют аутентификации
+                // Все остальные запросы (не /api и не Swagger/root) также требуют аутентификации
                 .anyRequest().authenticated()
             )
             .sessionManagement(sess -> sess
@@ -94,7 +75,7 @@ public class SecurityConfig {
                 "https://user.agrofarm.kz",
                 "https://www.user.agrofarm.kz",
                 "https://www.agrofarm.kz",
-                "http://localhost:5174" // <-- ДОБАВЛЕНО: Разрешаем ваш локальный фронтенд
+                "http://localhost:5174" 
         ));
         
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
@@ -111,8 +92,8 @@ public class SecurityConfig {
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService); // Указываем наш UserDetailsService
-        authProvider.setPasswordEncoder(passwordEncoder()); // Указываем наш PasswordEncoder
+        authProvider.setUserDetailsService(userDetailsService); 
+        authProvider.setPasswordEncoder(passwordEncoder()); 
         return authProvider;
     }
     
@@ -123,6 +104,6 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // Используем BCrypt для хеширования паролей
+        return new BCryptPasswordEncoder(); 
     }
 }
