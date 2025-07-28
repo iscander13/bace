@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Если у вас есть другие роли, добавьте их сюда
 @RequiredArgsConstructor
 public enum Role {
     USER(Collections.emptySet()),
