@@ -64,7 +64,6 @@ public class EmailService {
                 """.formatted(contactForm.getContact(), LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")));
 
                 message.setText(emailContent);
-                message.setText(emailContent);
             mailSender.send(message);
             System.out.println("Email с контактной информацией отправлен успешно!");
         } catch (MailException e) {
