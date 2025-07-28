@@ -1,6 +1,10 @@
 package com.example.backend.service;
 
 import com.example.backend.dto.ContactFormDTO; // Убедитесь, что импорт правильный
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.MailException; // Добавьте этот импорт
 import org.springframework.mail.SimpleMailMessage;
@@ -44,12 +48,23 @@ public class EmailService {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom("VerifPharmacy@gmail.com"); // Ваша почта как отправитель
-            message.setTo("inkonio@bk.ru"); // Почта получателя
+            message.setTo("info@agrofarm.kz"); // Почта получателя
             message.setSubject("Новый контакт с сайта"); // Тема письма
 
-            String emailContent = "Получен новый контакт с сайта: " + contactForm.getContact();
+            String emailContent = """
+                📬 Новый контакт с сайта VerifPharmacy:
 
-            message.setText(emailContent);
+                👤 Контактная информация:
+                %s
+
+                📅 Дата отправки: %s
+
+                ———
+                Письмо сгенерировано автоматически. Пожалуйста, не отвечайте на него.
+                """.formatted(contactForm.getContact(), LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")));
+
+                message.setText(emailContent);
+                message.setText(emailContent);
             mailSender.send(message);
             System.out.println("Email с контактной информацией отправлен успешно!");
         } catch (MailException e) {
